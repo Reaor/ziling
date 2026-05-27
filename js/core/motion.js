@@ -203,7 +203,11 @@ export class MotionEngine {
 
         const target = this._wanderTargets.get(char.id);
         if (target && nx === target.tx && ny === target.ty) {
-          this._assignWanderTarget(char);
+          this._wanderTargets.delete(char.id);
+          // Shape-constrained: pick a new mask cell to keep wandering within shape
+          if (this._shapeChars.has(char.id)) {
+            this._assignWanderTarget(char);
+          }
         }
 
         const moveTime = now;
@@ -262,50 +266,46 @@ export class MotionEngine {
       }
     }
 
-    // Sort: same-direction > perpendicular > opposite(blocked) > stay
-    const changeThreshold = 15 + Math.floor(Math.random() * 15); // 15-29 ticks before direction change
+    // Sort: target direction (TOP when active) > direction persistence > repulsion
+    const changeThreshold = 15 + Math.floor(Math.random() * 15);
     const forceChange = streak > changeThreshold;
-    
+    const hasTarget = target !== undefined;
+
     cands.sort((a, b) => {
-      // Stay is worst
       if (a.stay && !b.stay) return 1;
       if (!a.stay && b.stay) return -1;
       if (a.stay && b.stay) return 0;
-      
-      if (curDir) {
+
+      // When a character has a specific target → target direction is TOP priority
+      if (hasTarget) {
+        const aDist = Math.abs(a.x - target.tx) + Math.abs(a.y - target.ty);
+        const bDist = Math.abs(b.x - target.tx) + Math.abs(b.y - target.ty);
+        if (aDist !== bDist) return aDist - bDist;
+      }
+
+      if (curDir && !hasTarget) {
         const aSame = a.dx === curDir.dx && a.dy === curDir.dy;
         const bSame = b.dx === curDir.dx && b.dy === curDir.dy;
         const aOpposite = a.dx === -curDir.dx && a.dy === -curDir.dy;
         const bOpposite = b.dx === -curDir.dx && b.dy === -curDir.dy;
         
         if (!forceChange) {
-          // Normal: same > perpendicular > opposite
           if (aSame && !bSame) return -1;
           if (!aSame && bSame) return 1;
-          // Both perpendicular or both opposite → opposite is worse
           if (aOpposite && !bOpposite) return 1;
           if (!aOpposite && bOpposite) return -1;
         } else {
-          // Force change: perpendicular > same > opposite
           const aPerp = !aSame && !aOpposite;
           const bPerp = !bSame && !bOpposite;
           if (aPerp && !bPerp) return -1;
           if (!aPerp && bPerp) return 1;
-          // Among remaining: same > opposite
           if (aSame && bOpposite) return -1;
           if (bSame && aOpposite) return 1;
         }
       }
-      
-      // Repulsion: avoid nearby characters (but not at cost of direction)
+
+      // Repulsion breaks ties
       if (a.repulsion !== b.repulsion) return b.repulsion - a.repulsion;
-      
-      // Target direction
-      if (target) {
-        const da = Math.abs(a.x - target.tx) + Math.abs(a.y - target.ty);
-        const db = Math.abs(b.x - target.tx) + Math.abs(b.y - target.ty);
-        return da - db;
-      }
       return 0;
     });
 

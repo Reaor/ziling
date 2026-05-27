@@ -40,23 +40,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   console.log(`PIBT ready — Grid ${gridCols}x${gridRows}, ${CHAR_COUNT} characters`);
 
-  // ── Shape transition test after 3s of wandering ────────
+  // ── Shape test: simple rectangle ────────
   setTimeout(() => {
-    console.log('Shape transition: ^_^');
-    const result = shapeSystem.sampleEmoji('^_^', gridCols, gridRows, CHAR_COUNT);
-    console.log(`Mask: ${result.mask.length} cells`);
-
-    // Assign shape mask cells as PIBT wander targets
-    const mask = [...result.mask];
+    const rectW = 12, rectH = 5, rectX = 6, rectY = 8;
+    const mask = [];
+    for (let y = rectY; y < rectY + rectH; y++)
+      for (let x = rectX; x < rectX + rectW; x++)
+        mask.push({ x, y });
+    
+    console.log(`Rectangle: ${rectW}x${rectH} = ${mask.length} cells`);
+    
     const allChars = pool.getAll();
-  allChars.forEach((char, i) => {
-    if (i < mask.length) {
-      motion.setTarget(char.id, mask[i].x, mask[i].y);
-    }
-  });
-  // NOTE: Not setting shapeMask/constrainToShape — chars move freely after reaching target
-  console.log('Shape targets assigned — ' + Math.min(CHAR_COUNT, mask.length) + ' chars');
-    console.log('Transition initiated');
+    allChars.forEach((char, i) => {
+      if (i < mask.length) {
+        motion.setTarget(char.id, mask[i].x, mask[i].y);
+        motion.constrainToShape(char.id);
+      }
+    });
+    motion.shapeMask = mask;
+    console.log(`${Math.min(CHAR_COUNT, mask.length)} chars assigned to rectangle`);
   }, 3000);
 
   // ── State ─────────────────────────────────────────────
