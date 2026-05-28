@@ -5,8 +5,8 @@
  * This version addresses the "stuck character" problem by:
  *   1. Only constraining characters to shape mask when mask is active
  *   2. Characters NOT in shape constraint wander freely anywhere
- *   3. Stuck detection with gentle respawn (finds sparse areas)
- *   4. When all candidates blocked, character stays — but will be respawned if stuck too long
+ *   3. Stuck detection with target reassignment (finds far-away cells)
+ *   4. When all candidates blocked, character stays — target reassigned if stuck >5 ticks
  *
  * @module motion
  * @requires ./character.js, ./grid.js
@@ -94,6 +94,89 @@ export class MotionEngine {
   /** Release shape constraint */
   freeFromShape(charId) {
     this._shapeChars.delete(charId);
+  }
+
+  /**
+   * Force-scatter a character away from a point.
+   * Immediately teleports the character 2-4 cells in the scatter direction,
+   * then sets a wander target further out.
+   * @param {number} charId
+   * @param {number} fromCol — center of the "explosion"
+   * @param {number} fromRow
+   */
+  scatter(charId, fromCol, fromRow) {
+    const char = this.characters.get(charId);
+    if (!char) return;
+
+    // Determine scatter direction (away from click point)
+    const dx = char.gridX - fromCol;
+    const dy = char.gridY - fromRow;
+    let dirX = 0, dirY = 0;
+    
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (adx === 0 && ady === 0) {
+      dirX = Math.random() > 0.5 ? 1 : -1;
+    } else if (adx >= ady) {
+      dirX = Math.sign(dx);
+    } else {
+      dirY = Math.sign(dy);
+    }
+
+    // Find the furthest unoccupied cell in the scatter direction (up to 6 cells)
+    let bestX = char.gridX, bestY = char.gridY;
+    const dirs = [
+      { dx: dirX, dy: dirY },       // primary direction
+      { dx: dirY, dy: -dirX },      // perpendicular
+      { dx: -dirY, dy: dirX },      // opposite perpendicular
+    ];
+    
+    for (const d of dirs) {
+      if (d.dx === 0 && d.dy === 0) continue;
+      let cx = char.gridX, cy = char.gridY;
+      for (let step = 1; step <= 6; step++) {
+        const nx = char.gridX + d.dx * step;
+        const ny = char.gridY + d.dy * step;
+        if (nx < 0 || nx >= this.grid.cols || ny < 0 || ny >= this.grid.rows) break;
+        if (this.grid.isOccupied(nx, ny)) break;
+        cx = nx; cy = ny;
+      }
+      const dist = Math.abs(cx - char.gridX) + Math.abs(cy - char.gridY);
+      const bestDist = Math.abs(bestX - char.gridX) + Math.abs(bestY - char.gridY);
+      if (dist > bestDist) { bestX = cx; bestY = cy; }
+    }
+
+    // Move at least 2 cells if possible
+    const steps = Math.min(2 + Math.floor(Math.random() * 3),  // 2-4 cells
+      Math.abs(bestX - char.gridX) + Math.abs(bestY - char.gridY));
+    
+    let tx = char.gridX + dirX * Math.min(steps, Math.abs(bestX - char.gridX));
+    let ty = char.gridY + dirY * Math.min(steps, Math.abs(bestY - char.gridY));
+    if (tx === char.gridX && ty === char.gridY) {
+      tx = char.gridX + dirX; ty = char.gridY + dirY;
+    }
+    tx = Math.max(0, Math.min(this.grid.cols - 1, tx));
+    ty = Math.max(0, Math.min(this.grid.rows - 1, ty));
+
+    if (tx !== char.gridX || ty !== char.gridY) {
+      this.grid.vacate(char.gridX, char.gridY);
+      if (!this.grid.isOccupied(tx, ty)) {
+        this.grid.occupy(char.id, tx, ty);
+        char.prevGridX = char.gridX;
+        char.prevGridY = char.gridY;
+        char.gridX = tx;
+        char.gridY = ty;
+        char.displayX = tx * this.cellSize;
+        char.displayY = ty * this.cellSize;
+        this._stuckTicks.set(char.id, 0);
+        this._directionStreaks.set(char.id, 0);
+      } else {
+        this.grid.occupy(char.id, char.gridX, char.gridY);
+      }
+    }
+
+    // Set a far wander target
+    this._assignWanderTarget(char);
+    this._shapeChars.delete(charId); // Release shape constraint
   }
 
   /** Set the shape mask and constrain all assigned characters */
@@ -372,31 +455,6 @@ export class MotionEngine {
       if (tx === char.gridX && ty === char.gridY) continue;
       if (this.grid.isOccupied(tx, ty)) continue;
       this._wanderTargets.set(char.id, { tx, ty });
-      return;
-    }
-  }
-
-  // ── Recovery ──────────────────────────────────────────
-
-  _respawnSparse(char, cols, rows) {
-    for (let a = 0; a < 50; a++) {
-      const tx = Math.floor(Math.random() * cols);
-      const ty = Math.floor(Math.random() * rows);
-      if (this.grid.isOccupied(tx, ty)) continue;
-      let crowded = false;
-      for (let dy = -3; dy <= 3 && !crowded; dy++)
-        for (let dx = -3; dx <= 3 && !crowded; dx++)
-          if (tx+dx >= 0 && tx+dx < cols && ty+dy >= 0 && ty+dy < rows)
-            if (this.grid.isOccupied(tx+dx, ty+dy)) crowded = true;
-      if (crowded) continue;
-      this.grid.vacate(char.gridX, char.gridY);
-      this.grid.occupy(char.id, tx, ty);
-      char.gridX = tx; char.gridY = ty;
-      char.prevGridX = tx; char.prevGridY = ty;
-      char.displayX = tx * this.cellSize;
-      char.displayY = ty * this.cellSize;
-      this._stuckTicks.set(char.id, 0);
-      this._assignWanderTarget(char);
       return;
     }
   }

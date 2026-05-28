@@ -6,9 +6,9 @@
 
 import { Renderer } from './render/renderer.js';
 import { Grid } from './core/grid.js';
-import { Character, CharacterPool, CHAR_STATE } from './core/character.js';
+import { Character, CharacterPool } from './core/character.js';
 import { MotionEngine } from './core/motion.js';
-import { ShapeSystem } from './core/shape.js';
+import { GestureRecognizer } from './input/gestures.js';
 
 document.addEventListener('DOMContentLoaded', () => {
   // ── Init ──────────────────────────────────────────────
@@ -25,9 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const pool = new CharacterPool(200);
   const motion = new MotionEngine(grid, CELL_SIZE, 0);
 
-  // Shape system for expression/giant-char grid masks
-  const shapeSystem = new ShapeSystem();
-
   // Create characters spread across grid
   const CHAR_POOL = '天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳'.split('');
   const CHAR_COUNT = 60;
@@ -40,15 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   console.log(`PIBT ready — Grid ${gridCols}x${gridRows}, ${CHAR_COUNT} characters`);
 
-  // ── Shape test: simple rectangle ────────
+  // [TEST 4] Shape formation — rectangle
   setTimeout(() => {
-    const rectW = 12, rectH = 5, rectX = 6, rectY = 8;
+    const w = 12, h = 5, ox = 6, oy = 8;
     const mask = [];
-    for (let y = rectY; y < rectY + rectH; y++)
-      for (let x = rectX; x < rectX + rectW; x++)
+    for (let y = oy; y < oy + h; y++)
+      for (let x = ox; x < ox + w; x++)
         mask.push({ x, y });
-    
-    console.log(`Rectangle: ${rectW}x${rectH} = ${mask.length} cells`);
     
     const allChars = pool.getAll();
     allChars.forEach((char, i) => {
@@ -58,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
     motion.shapeMask = mask;
-    console.log(`${Math.min(CHAR_COUNT, mask.length)} chars assigned to rectangle`);
+    console.log(`Shape: ${w}x${h} rect, ${mask.length} cells`);
   }, 3000);
 
   // ── State ─────────────────────────────────────────────
@@ -69,6 +64,41 @@ document.addEventListener('DOMContentLoaded', () => {
   let lastFpsLog = performance.now();
   let lastCheckSecond = -1;
   let collisionOk = true;
+
+  // ── Gestures ──────────────────────────────────────────
+  const gestures = new GestureRecognizer(
+    renderer.canvas, CELL_SIZE,
+    {
+      onTap(col, row) {
+        console.log(`Tap at (${col},${row})`);
+        const allChars = pool.getAll();
+        for (const char of allChars) {
+          const dist = Math.abs(char.gridX - col) + Math.abs(char.gridY - row);
+          if (dist <= 3) {
+            motion.scatter(char.id, col, row);
+          }
+        }
+      },
+      onDoubleTap(col, row) {
+        console.log(`Double-tap at (${col},${row})`);
+        // Placeholder: shape switching (will implement in interactive mode)
+      },
+      onLongPress(col, row) {
+        console.log(`Long-press at (${col},${row})`);
+        // Placeholder: return to text-line layout (will implement in interactive mode)
+      },
+      onDragStart(col, row) {
+        console.log(`Drag start at (${col},${row})`);
+        // Placeholder: drag all characters (will implement with shell-center system)
+      },
+      onDragMove(col, row, dx, dy) {
+        // Placeholder
+      },
+      onDragEnd() {
+        // Placeholder
+      },
+    }
+  );
 
   // ── Animation loop ────────────────────────────────────
   function loop(now) {
@@ -126,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx2.fillStyle = '#ffffff';
       ctx2.font = '10px monospace';
       ctx2.textBaseline = 'top';
-      ctx2.fillText(`FPS:${instantFps} FT:${avgFt.toFixed(1)}ms CH:${pool.count()} ${collisionOk ? 'OK' : '!!'} SHP:${shapeSystem.currentMask.length}`, 4, 4);
+      ctx2.fillText(`FPS:${instantFps} FT:${avgFt.toFixed(1)}ms CH:${pool.count()} ${collisionOk ? 'OK' : '!!'}`, 4, 4);
       ctx2.restore();
     }
 

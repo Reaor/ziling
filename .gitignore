@@ -4,3 +4,4 @@ node_modules/
 .playwright-mcp/
 cache/
 server.js
+server.js
