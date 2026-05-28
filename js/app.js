@@ -88,31 +88,53 @@ document.addEventListener('DOMContentLoaded', () => {
         // Placeholder: return to text-line layout (will implement in interactive mode)
       },
       onDragStart(col, row) {
-        // TODO: implement proper drag behavior
+        gestures._dragging = true;
+        gestures._dragFrom = { col, row };
+        motion.releaseShape();
+        // Set initial drag bias
+        motion.dragBias = { dx: 0, dy: 0, strength: 0 };
       },
       onDragMove(col, row, dx, dy) {
-        // TODO: implement proper drag behavior
+        if (!gestures._dragging) return;
+        const from = gestures._dragFrom;
+        const ddx = col - from.col;
+        const ddy = row - from.row;
+        if (ddx === 0 && ddy === 0) return;
+
+        const adx = Math.abs(ddx), ady = Math.abs(ddy);
+        motion.dragBias = {
+          dx: adx >= ady ? Math.sign(ddx) : 0,
+          dy: ady > adx ? Math.sign(ddy) : 0,
+          strength: Math.min(1, Math.sqrt(ddx * ddx + ddy * ddy) / 4),
+        };
+        // Adaptive speed
+        motion.tickDuration = Math.max(40, Math.min(200, Math.round(150 / Math.max(adx + ady, 1))));
+
+        gestures._lastX = col;
+        gestures._lastY = row;
       },
       onDragEnd() {
-        // TODO: implement proper drag behavior
-      },
-      onDragMove(col, row, dx, dy) {
-        const origin = gestures._dragOrigin;
-        if (!origin) return;
-        const dCol = col - origin.col;
-        const dRow = row - origin.row;
-        const starts = gestures._dragStartPositions;
-        if (!starts) return;
-        for (const s of starts) {
-          const tx = Math.max(0, Math.min(gridCols - 1, s.x + dCol));
-          const ty = Math.max(0, Math.min(gridRows - 1, s.y + dRow));
-          motion.setTarget(s.id, tx, ty);
+        motion.dragBias = null;
+        motion.tickDuration = 200;
+        gestures._dragging = false;
+        if (gestures._dragFrom && motion.shapeMask) {
+          const from = gestures._dragFrom;
+          // Last known drag position for shape re-constrain
+          const shiftCol = Math.round((gestures._lastX ?? from.col) - from.col);
+          const shiftRow = Math.round((gestures._lastY ?? from.row) - from.row);
+          if (shiftCol || shiftRow) {
+            const newMask = motion.shapeMask.map(c => ({
+              x: Math.max(0, Math.min(gridCols - 1, c.x + shiftCol)),
+              y: Math.max(0, Math.min(gridRows - 1, c.y + shiftRow)),
+            }));
+            motion.shapeMask = newMask;
+            const allChars = pool.getAll();
+            allChars.forEach((char, i) => {
+              if (i < newMask.length) motion.constrainToShape(char.id);
+            });
+          }
         }
-      },
-      onDragEnd() {
-        console.log('Drag end');
-        gestures._dragOrigin = null;
-        gestures._dragStartPositions = null;
+        gestures._dragFrom = null;
       },
     }
   );

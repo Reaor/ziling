@@ -52,7 +52,14 @@ export class MotionEngine {
     // Shape constraint (per-character, NOT global)
     this._shapeChars = new Set();
     this._shapeMask = null;
+
+    // Drag bias state
+    this.dragBias = null; // { dx: -1|0|1, dy: -1|0|1, strength: 0-1 }
   }
+
+  /** Public getter/setter bridging _shapeMask for external access */
+  get shapeMask() { return this._shapeMask; }
+  set shapeMask(v) { this._shapeMask = v; }
 
   // ── Public API ────────────────────────────────────────
 
@@ -308,6 +315,16 @@ export class MotionEngine {
         }
       }
     }
+
+    // During drag: aggressively refresh targets for characters that need new ones
+    if (this.dragBias && this.dragBias.strength > 0.2) {
+      for (const char of chars) {
+        const stuck = this._stuckTicks.get(char.id) || 0;
+        if (stuck > 1 || !this._wanderTargets.has(char.id)) {
+          this._assignWanderTarget(char);
+        }
+      }
+    }
   }
 
   _funcPIBT(chars, i, cols, rows, idx) {
@@ -428,35 +445,71 @@ export class MotionEngine {
   // ── Wander ────────────────────────────────────────────
 
   _assignWanderTarget(char) {
+    // Shape-constrained: pick from mask, biased toward drag if active
     if (this._shapeChars.has(char.id) && this._shapeMask && this._shapeMask.length > 0) {
-      for (let a = 0; a < 20; a++) {
-        const c = this._shapeMask[Math.floor(Math.random() * this._shapeMask.length)];
+      const candidates = [];
+      for (const c of this._shapeMask) {
         if (c.x === char.gridX && c.y === char.gridY) continue;
         if (this.grid.isOccupied(c.x, c.y)) continue;
-        this._wanderTargets.set(char.id, { tx: c.x, ty: c.y });
-        return;
+        candidates.push(c);
+      }
+      if (candidates.length > 0) {
+        const pick = this._pickBiased(candidates, char);
+        if (pick) {
+          this._wanderTargets.set(char.id, { tx: pick.x, ty: pick.y });
+          return;
+        }
       }
     }
-    // Prefer targets far from current position for wider roaming
-    for (let a = 0; a < 15; a++) {
+
+    // Free roaming: pick random cell, biased toward drag if active
+    for (let a = 0; a < 30; a++) {
       const tx = Math.floor(Math.random() * this.grid.cols);
       const ty = Math.floor(Math.random() * this.grid.rows);
       const dist = Math.abs(tx - char.gridX) + Math.abs(ty - char.gridY);
-      if (dist < 8) continue;  // At least 8 cells away
+      if (dist < 5) continue;
       if (tx === char.gridX && ty === char.gridY) continue;
       if (this.grid.isOccupied(tx, ty)) continue;
+
+      // Bias check: if drag is active, prefer cells in drag direction
+      if (this.dragBias && this.dragBias.strength > 0.2) {
+        const dx = tx - char.gridX;
+        const dy = ty - char.gridY;
+        const align = (dx * this.dragBias.dx + dy * this.dragBias.dy) / Math.max(Math.abs(dx) + Math.abs(dy), 1);
+        // Accept with probability based on alignment and strength
+        if (Math.random() > 0.3 + align * 0.7 * this.dragBias.strength) continue;
+      }
+
       this._wanderTargets.set(char.id, { tx, ty });
       return;
     }
-    // Fallback: any unoccupied cell
-    for (let a = 0; a < 10; a++) {
+    // Fallback: any unoccupied cell at least 3 away
+    for (let a = 0; a < 20; a++) {
       const tx = Math.floor(Math.random() * this.grid.cols);
       const ty = Math.floor(Math.random() * this.grid.rows);
-      if (tx === char.gridX && ty === char.gridY) continue;
+      if (Math.abs(tx - char.gridX) + Math.abs(ty - char.gridY) < 3) continue;
       if (this.grid.isOccupied(tx, ty)) continue;
       this._wanderTargets.set(char.id, { tx, ty });
       return;
     }
+  }
+
+  _pickBiased(candidates, char) {
+    if (!this.dragBias || this.dragBias.strength < 0.1) {
+      return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    // Score each candidate by alignment with drag direction
+    const scored = candidates.map(c => {
+      const dx = c.x - char.gridX;
+      const dy = c.y - char.gridY;
+      const dist = Math.abs(dx) + Math.abs(dy) || 1;
+      const align = (dx * this.dragBias.dx + dy * this.dragBias.dy) / dist;
+      return { c, score: align * this.dragBias.strength + Math.random() * 0.5 };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    // Weighted random from top candidates (adds natural variation)
+    const topN = Math.max(3, Math.floor(scored.length * 0.3));
+    return scored[Math.floor(Math.random() * topN)].c;
   }
 
   // ── Helpers ───────────────────────────────────────────
