@@ -89,13 +89,28 @@ document.addEventListener('DOMContentLoaded', () => {
       },
       onDragStart(col, row) {
         console.log(`Drag start at (${col},${row})`);
-        // Placeholder: drag all characters (will implement with shell-center system)
+        // Record shell center and all character positions
+        const allChars = pool.getAll();
+        gestures._dragOrigin = { col, row };
+        gestures._dragStartPositions = allChars.map(c => ({ id: c.id, x: c.gridX, y: c.gridY }));
       },
       onDragMove(col, row, dx, dy) {
-        // Placeholder
+        const origin = gestures._dragOrigin;
+        if (!origin) return;
+        const dCol = col - origin.col;
+        const dRow = row - origin.row;
+        const starts = gestures._dragStartPositions;
+        if (!starts) return;
+        for (const s of starts) {
+          const tx = Math.max(0, Math.min(gridCols - 1, s.x + dCol));
+          const ty = Math.max(0, Math.min(gridRows - 1, s.y + dRow));
+          motion.setTarget(s.id, tx, ty);
+        }
       },
       onDragEnd() {
-        // Placeholder
+        console.log('Drag end');
+        gestures._dragOrigin = null;
+        gestures._dragStartPositions = null;
       },
     }
   );
