@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const allChars = pool.getAll();
     allChars.forEach((char, i) => {
-      if (i < mask.length) {
+      if (i < 30) { // 50% density — room to move
         motion.setTarget(char.id, mask[i].x, mask[i].y);
         motion.constrainToShape(char.id);
       }
@@ -88,11 +88,13 @@ document.addEventListener('DOMContentLoaded', () => {
         // Placeholder: return to text-line layout (will implement in interactive mode)
       },
       onDragStart(col, row) {
-        console.log(`Drag start at (${col},${row})`);
-        // Record shell center and all character positions
-        const allChars = pool.getAll();
-        gestures._dragOrigin = { col, row };
-        gestures._dragStartPositions = allChars.map(c => ({ id: c.id, x: c.gridX, y: c.gridY }));
+        // TODO: implement proper drag behavior
+      },
+      onDragMove(col, row, dx, dy) {
+        // TODO: implement proper drag behavior
+      },
+      onDragEnd() {
+        // TODO: implement proper drag behavior
       },
       onDragMove(col, row, dx, dy) {
         const origin = gestures._dragOrigin;
