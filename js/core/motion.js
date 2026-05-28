@@ -477,7 +477,7 @@ export class MotionEngine {
         const dy = ty - char.gridY;
         const align = (dx * this.dragBias.dx + dy * this.dragBias.dy) / Math.max(Math.abs(dx) + Math.abs(dy), 1);
         // Accept with probability based on alignment and strength
-        if (Math.random() > 0.3 + align * 0.7 * this.dragBias.strength) continue;
+        if (Math.random() > 0.1 + align * 0.9 * this.dragBias.strength) continue;
       }
 
       this._wanderTargets.set(char.id, { tx, ty });
@@ -504,11 +504,11 @@ export class MotionEngine {
       const dy = c.y - char.gridY;
       const dist = Math.abs(dx) + Math.abs(dy) || 1;
       const align = (dx * this.dragBias.dx + dy * this.dragBias.dy) / dist;
-      return { c, score: align * this.dragBias.strength + Math.random() * 0.5 };
+      return { c, score: align * this.dragBias.strength + Math.random() * 0.2 };
     });
     scored.sort((a, b) => b.score - a.score);
     // Weighted random from top candidates (adds natural variation)
-    const topN = Math.max(3, Math.floor(scored.length * 0.3));
+    const topN = Math.max(3, Math.floor(scored.length * 0.2));
     return scored[Math.floor(Math.random() * topN)].c;
   }
 
